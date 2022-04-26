@@ -25,6 +25,9 @@ public:
 	int gImageHeight;
 	unsigned char** gResultImg;
 
+	//모핑 결과 저장을 위한 변수
+	unsigned char** morphedImg[10];
+
 // 작업입니다.
 public:
 
@@ -78,5 +81,10 @@ public:
 	void GeometryZoomoutSubsampling();
 	void GeometryZoomoutAvg();
 	void GeometryRotate();
+	void GeometryMirror();
+	void GeometryFlip();
+	void GeometryDiagonal();
+	void GeometryWarping();
+	void GeometryMorphing();
 };
  

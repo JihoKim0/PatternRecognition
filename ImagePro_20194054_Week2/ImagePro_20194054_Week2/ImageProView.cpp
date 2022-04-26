@@ -20,6 +20,8 @@
 #define TWO_IMAGES 1
 #define THREE_IMAGES 2
 #define TWO_IMAGES_SCALED 4
+#define MORPHING 8
+
 // CImageProView
 
 IMPLEMENT_DYNCREATE(CImageProView, CScrollView)
@@ -47,6 +49,11 @@ BEGIN_MESSAGE_MAP(CImageProView, CScrollView)
 	ON_COMMAND(ID_GEOMETRY_ZOOMOUT_SUBSAMPLING, &CImageProView::OnGeometryZoomoutSubsampling)
 	ON_COMMAND(ID_GEOMETRY_ZOOMOUT_AVG, &CImageProView::OnGeometryZoomoutAvg)
 	ON_COMMAND(ID_GEOMETRY_ROTATE, &CImageProView::OnGeometryRotate)
+	ON_COMMAND(ID_GEOMETRY_MIRROR, &CImageProView::OnGeometryMirror)
+	ON_COMMAND(ID_GEOMETRY_FLIP, &CImageProView::OnGeometryFlip)
+	ON_COMMAND(ID_GEOMETRY_DIAGONAL, &CImageProView::OnGeometryDiagonal)
+	ON_COMMAND(ID_GEOMETRY_WARPING, &CImageProView::OnGeometryWarping)
+	ON_COMMAND(ID_GEOMETRY_MORPHING, &CImageProView::OnGeometryMorphing)
 END_MESSAGE_MAP()
 
 // CImageProView 생성/소멸
@@ -103,6 +110,21 @@ void CImageProView::OnDraw(CDC* pDC)
 							pDoc->gResultImg[y][x],
 							pDoc->gResultImg[y][x]));
 		}
+		else if (viewMode == MORPHING) {
+			for (int y = 0; y < pDoc->imageHeight; y++)       // 두번째입력영상출력
+				for(int x=0; x< pDoc->imageWidth; x++)
+					pDC->SetPixel(x+pDoc->imageWidth+30, y,
+						RGB(pDoc->inputImg2[y][x],
+							pDoc->inputImg2[y][x],
+							pDoc->inputImg2[y][x])); 
+			for (int i = 0; i < 10; i++)
+				for (int y = 0; y < pDoc->imageHeight; y++)       // 모핑결과출력
+					for(int x=0; x< pDoc->imageWidth; x++)
+						pDC->SetPixel(x+pDoc->imageWidth*2+60,y,
+							RGB(pDoc->morphedImg[i][y][x],
+								pDoc->morphedImg[i][y][x],
+								pDoc->morphedImg[i][y][x]));
+		} 
 		else {
 			for (int y = 0; y < pDoc->imageHeight; y++)		//print result image
 				for (int x = 0; x < pDoc->imageWidth; x++)
@@ -397,5 +419,60 @@ void CImageProView::OnGeometryRotate()
 	if (pDoc->inputImg == NULL) return;
 	pDoc->GeometryRotate();
 	viewMode = TWO_IMAGES_SCALED;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometryMirror()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->GeometryMirror();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometryFlip()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->GeometryFlip();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometryDiagonal()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->GeometryDiagonal();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometryWarping()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->GeometryWarping();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometryMorphing()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->GeometryMorphing();
+	viewMode = MORPHING;
 	Invalidate(FALSE);
 }

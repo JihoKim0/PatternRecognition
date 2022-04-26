@@ -62,6 +62,11 @@ public:
 	afx_msg void OnGeometryZoomoutSubsampling();
 	afx_msg void OnGeometryZoomoutAvg();
 	afx_msg void OnGeometryRotate();
+	afx_msg void OnGeometryMirror();
+	afx_msg void OnGeometryFlip();
+	afx_msg void OnGeometryDiagonal();
+	afx_msg void OnGeometryWarping();
+	afx_msg void OnGeometryMorphing();
 };
 
 #ifndef _DEBUG  // ImageProView.cpp의 디버그 버전
