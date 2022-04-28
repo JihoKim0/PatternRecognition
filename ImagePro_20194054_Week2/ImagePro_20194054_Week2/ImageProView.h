@@ -15,6 +15,7 @@ protected: // serialization에서만 만들어집니다.
 public:
 	CImagePro20194054Week2Doc* GetDocument() const;
 	int viewMode;
+	char AVIFileName[256];
 
 // 작업입니다.
 public:
@@ -67,6 +68,10 @@ public:
 	afx_msg void OnGeometryDiagonal();
 	afx_msg void OnGeometryWarping();
 	afx_msg void OnGeometryMorphing();
+	afx_msg void OnAviView();
+	void loadAVIFile(CDC* pDC);
+	afx_msg void OnCupTracking();
+	void Find_Cup();
 };
 
 #ifndef _DEBUG  // ImageProView.cpp의 디버그 버전
