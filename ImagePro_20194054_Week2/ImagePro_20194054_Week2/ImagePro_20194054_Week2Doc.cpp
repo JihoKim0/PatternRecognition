@@ -1040,3 +1040,342 @@ void CImagePro20194054Week2Doc::GeometryMorphing()
 			}
 	}
 }
+
+void CImagePro20194054Week2Doc::FFT_2D()
+{
+	int i, x, y, val;
+	complex_num* data;
+	int log2N;
+	int num;
+	unsigned char** tmpImg;
+	
+	num = imageWidth;
+	log2N = 0;
+	while (num >= 2)
+	{
+		num >>= 1;
+		log2N++;
+	}
+
+	data = (complex_num*)malloc(sizeof(complex_num) * imageWidth);
+
+	fft_result = (complex_num**)malloc(sizeof(complex_num*) * imageHeight);
+	for (i = 0; i < imageHeight; i++)
+		fft_result[i] = (complex_num*)malloc(sizeof(complex_num) * imageWidth);
+
+	tmpImg = (unsigned char**)malloc(sizeof(unsigned char*) * imageHeight);
+	for (i = 0; i < imageHeight; i++)
+		tmpImg[i] = (unsigned char*)malloc(imageWidth);
+
+	for (y = 0; y < imageHeight; y++) // 영상의 각 행에 대하여 FFT 수행
+	{
+		for (x = 0; x < imageWidth; x++) // 한 행을 data 배열에 복사
+		{
+			data[x].re = inputImg[y][x]; // 실수부는 영상의 픽셀 값으로 설정
+			data[x].im = 0; // 허수부 값을 0으로 설정
+		}
+		FFT_1D(data, imageWidth, log2N); // 1차원 FFT 수행
+		for (x = 0; x < imageWidth; x++) // 결과 저장
+		{
+			fft_result[y][x].re = data[x].re;
+			fft_result[y][x].im = data[x].im;
+		}
+	}
+
+	// 영상의 높이에 대한 log2N 계산
+	num = imageHeight;
+	log2N = 0;
+	while (num >= 2)
+	{
+		num >>= 1;
+		log2N++;
+	}
+	// 기억장소 할당
+	free(data);
+	data = (complex_num*)malloc(sizeof(complex_num) * imageHeight);
+
+	for (x = 0; x < imageWidth; x++) // 각 열에 대해 FFT 수행
+	{
+		for (y = 0; y < imageHeight; y++) // 행에 대한 FFT 결과의 한 열을 복사
+		{
+			data[y].re = fft_result[y][x].re;
+			data[y].im = fft_result[y][x].im;
+		}
+		FFT_1D(data, imageHeight, log2N); // 각 열에 대해 1차원 FFT 수행
+		for (y = 0; y < imageHeight; y++) // 결과 저장
+		{
+			fft_result[y][x].re = data[y].re;
+			fft_result[y][x].im = data[y].im;
+		}
+	}
+
+	// FFT 결과값을 영상으로 보여주기 위해 변환
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++) {
+			val = 20 * (int)log(fabs(sqrt(fft_result[y][x].re * fft_result[y][x].re +
+				fft_result[y][x].im * fft_result[y][x].im)));
+			if (val > 255) val = 255;
+			if (val < 0) val = 0;
+			resultImg[y][x] = (unsigned char)val;
+		}
+
+	// FFT 결과 이미지의 중심점을 기준으로 이미지를 4등분하고
+// 각 사분면의 내용을 상하 대칭 및 좌우 대칭시킴
+	for (i = 0; i < imageHeight; i += imageHeight / 2) {
+		for (int j = 0; j < imageWidth; j += imageWidth / 2) {
+			for (int row = 0; row < imageHeight / 2; row++) {
+				for (int col = 0; col < imageWidth / 2; col++) {
+					tmpImg[(imageHeight / 2 - 1) - row + i][(imageWidth / 2 - 1) - col + j] =
+						resultImg[i + row][j + col];
+				}
+			}
+		}
+	}
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++)
+			resultImg[y][x] = tmpImg[y][x];
+
+}
+
+
+void CImagePro20194054Week2Doc::FFT_1D(complex_num x[], int N, int log2N)
+{
+	shuffle_data(x, N, log2N);
+	butterfly_computation(x, N, log2N);
+}
+
+
+void CImagePro20194054Week2Doc::shuffle_data(complex_num x[], int N, int log2N)
+{
+	int i;
+	complex_num* tmp;
+
+	// 임시 기억장소 할당
+	tmp = (complex_num*)malloc(sizeof(complex_num) * N);
+	for (i = 0; i < N; i++) {
+		tmp[i].re = x[reverse_bit_order(i, log2N)].re;
+		tmp[i].im = x[reverse_bit_order(i, log2N)].im;
+	}
+	for (i = 0; i < N; i++) {	//tmp를 x에 복사
+		x[i].re = tmp[i].re;
+		x[i].im = tmp[i].im;
+	}
+	free(tmp); // 기억장소 반환
+
+}
+
+
+int CImagePro20194054Week2Doc::reverse_bit_order(int index, int log2N)
+{
+	unsigned int b, r, k;
+
+	r = 0;
+	for (k = 0; k < log2N; k++) {
+		b = (index & (1 << k)) >> k;
+		r = (r << 1) | b;
+	}
+	return r;
+}
+
+
+void CImagePro20194054Week2Doc::butterfly_computation(complex_num x[], int N, int log2N)
+{
+	int k, l, i, j;
+	int groupSize; // 그룹 크기
+	int start; // 그룹의 시작 위치
+	complex_num* W; // 값을 저장하는 기억 장소
+	complex_num temp;
+
+	W = (complex_num*)malloc(sizeof(complex_num) * N / 2);
+	for (k = 1; k <= log2N; k++) {
+		groupSize = (int)pow((float)2, (int)k);
+		for (i = 0; i < groupSize / 2; i++) {
+			W[i].re = cos(i * 2.0 * PI / (double)groupSize);
+			W[i].im = -sin(i * 2.0 * PI / (double)groupSize);
+		}
+		start = 0;
+		for (l = 0; l < N / groupSize; l++) {	//각 그룹에 대해
+			for (i = start; i < start + groupSize / 2; i++) {	//그룹 내 각 나비 흐름도에 대해
+				j = i + groupSize / 2;
+
+				temp.re = W[i - start].re * x[j].re - W[i - start].im * x[j].im;
+				temp.im = W[i - start].im * x[j].re + W[i - start].re * x[j].im;
+				x[j].re = x[i].re - temp.re;
+				x[j].im = x[i].im - temp.im;
+				x[i].re = x[i].re + temp.re;
+				x[i].im = x[i].im + temp.im;
+			}
+			start = start + groupSize;
+		}
+	}
+}
+
+
+void CImagePro20194054Week2Doc::Inverse_FFT_2D()
+{
+	int i, x, y;
+	complex_num* data; /* 1차원 FFT를 위한 데이터 배열 */
+	int log2N; /* FFT 단계수 */
+	int num;
+
+	/* 영상의 폭에 대한 log2N을 계산 */
+	num = imageWidth;
+	log2N = 0;
+	while (num >= 2) {
+		num >>= 1;
+		log2N++;
+	}
+
+	//1차원 FFT를 위한 기억장소 할당
+	data = (complex_num*)malloc(sizeof(complex_num) * imageWidth);
+	// IFFT 결과를 저장하기 위한 기억 장소 할당
+	ifft_result = (complex_num**)malloc(sizeof(complex_num*) * imageHeight);
+
+	for (i = 0; i < imageHeight; i++)
+		ifft_result[i] = (complex_num*)malloc(sizeof(complex_num) * imageWidth);
+
+	for (y = 0; y < imageHeight; y++) {
+		for (x = 0; x < imageWidth; x++) {
+			data[x].re = fft_result[y][x].re;
+			data[x].im = fft_result[y][x].im;
+		}
+		Inverse_FFT_1D(data, imageWidth, log2N);	//1차원 IFFT
+		for (x = 0; x < imageWidth; x++) {
+			ifft_result[y][x].re = data[x].re;
+			ifft_result[y][x].im = data[x].im;
+		}
+	}
+	//영상 높이에 대한 log2N 계산
+	num = imageHeight;
+	log2N = 0;
+	while (num >= 2) {
+		num >>= 1;
+		log2N++;
+	}
+	// 기억장소 할당
+	free(data);
+	data = (complex_num*)malloc(sizeof(complex_num) * imageHeight);
+
+	for (x = 0; x < imageWidth; x++)
+	{
+		for (y = 0; y < imageHeight; y++) // 행에 대한 IFFT 결과의 한 열 복사
+		{
+			data[y].re = ifft_result[y][x].re;
+			data[y].im = ifft_result[y][x].im;
+		}
+		Inverse_FFT_1D(data, imageHeight, log2N); // 1차원 IFFT
+
+		for (y = 0; y < imageHeight; y++) // 결과 저장
+		{
+			ifft_result[y][x].re = data[y].re;
+			ifft_result[y][x].im = data[y].im;
+		}
+	}
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++)
+			resultImg[y][x] = (unsigned char)ifft_result[y][x].re;
+}
+
+
+void CImagePro20194054Week2Doc::Inverse_FFT_1D(complex_num x[], int N, int log2N)
+{
+	shuffle_data(x, N, log2N);
+	inverse_butterfly_computation(x, N, log2N);
+}
+
+
+void CImagePro20194054Week2Doc::inverse_butterfly_computation(complex_num x[], int N, int log2N)
+{
+	int k, l, i, j;
+	int groupSize; // 그룹 크기
+	int start; // 그룹의 시작 위치
+	complex_num* W; // 값을 저장하는 기억 장소
+	complex_num temp;
+	W = (complex_num*)malloc(sizeof(complex_num) * N / 2);
+	for (k = 1; k <= log2N; k++) { // 각 단계에 대하여
+		groupSize = (int)pow((float)2, (int)k); // groupSize = 
+		for (i = 0; i < groupSize / 2; i++) { // ,,...,값 계산
+			W[i].re = cos(i * 2.0 * PI / (double)groupSize);
+			W[i].im = sin(i * 2.0 * PI / (double)groupSize);
+		}
+		start = 0;
+		for (l = 0; l < N / groupSize; l++) { // 각 그룹에 대하여
+			// 그룹 내의 각 나비 흐름도에 대하여
+			for (i = start; i < start + groupSize / 2; i++) {
+				j = i + groupSize / 2;
+				temp.re = W[i - start].re * x[j].re - W[i - start].im * x[j].im; // 복소수 곱셈
+				temp.im = W[i - start].im * x[j].re + W[i - start].re * x[j].im;
+				x[j].re = x[i].re - temp.re;
+				x[j].im = x[i].im - temp.im;
+				x[i].re = x[i].re + temp.re;
+				x[i].im = x[i].im + temp.im;
+			}
+			start = start + groupSize;
+		}
+	}
+	for (i = 0; i < N; i++){
+		x[i].re = x[i].re / N;
+		x[i].im = x[i].im / N;
+	}
+}
+
+
+void CImagePro20194054Week2Doc::LowPassFilter()
+{
+	double B;
+	int x, y, u, v;
+	double D0 = 32.0;
+	double N = 2.0;
+	FFT_2D(); // FFT 수행
+
+	// 영상 스펙트럼에 필터를 곱함
+	for (y = 0; y < imageHeight; y++) {
+		for (x = 0; x < imageWidth; x++) {
+			u = x;
+			v = y;
+
+			if (u > imageWidth / 2) u = imageWidth - u;
+			if (v > imageHeight / 2) v = imageHeight - v;
+			B = 1.0 / (1.0 + pow(sqrt((double)(u * u + v * v)) / D0, 2 * N));
+			fft_result[y][x].re = fft_result[y][x].re * B;
+			fft_result[y][x].im = fft_result[y][x].im * B;
+		}
+	}
+	Inverse_FFT_2D(); // IFFT 실행
+}
+
+
+void CImagePro20194054Week2Doc::HighPassFilter()
+{
+	double B;
+	int x, y, u, v;
+	double D0 = 64.0;
+	double N = 2.0;
+	FFT_2D();
+	
+	for (y = 0; y < imageHeight; y++) {
+		for (x = 0; x < imageWidth; x++) {
+			u = x;
+			v = y;
+
+			if (u > imageWidth / 2) u = imageWidth - u;
+			if (v > imageHeight / 2) v = imageHeight - v;
+			B = 1.0 / (1.0 + pow(D0 / sqrt((double)(u * u + v * v)), 2 * N));
+			fft_result[y][x].re = fft_result[y][x].re * B;
+			fft_result[y][x].im = fft_result[y][x].im * B;
+		}
+	}
+
+	Inverse_FFT_2D();
+}
+
+
+void CImagePro20194054Week2Doc::NoiseRemove()
+{
+	FFT_2D(); //FFT 수행
+	fft_result[0][64].re = 0.0;
+	fft_result[0][64].im = 0.0;
+	fft_result[0][192].re = 0.0;
+	fft_result[0][192].im = 0.0;
+	Inverse_FFT_2D(); //IFFT 실행
+}

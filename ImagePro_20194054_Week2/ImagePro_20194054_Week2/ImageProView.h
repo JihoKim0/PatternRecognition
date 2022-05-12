@@ -16,6 +16,7 @@ public:
 	CImagePro20194054Week2Doc* GetDocument() const;
 	int viewMode;
 	char AVIFileName[256];
+	int operation;
 
 // 작업입니다.
 public:
@@ -71,7 +72,14 @@ public:
 	afx_msg void OnAviView();
 	void loadAVIFile(CDC* pDC);
 	afx_msg void OnCupTracking();
-	void Find_Cup();
+	void Find_Cup(unsigned char * image);
+	void draw_rect(unsigned char* image, int xmin, int ymin, int xmax, int ymax);
+	int compute_hue(unsigned char* image, int x, int y);
+	afx_msg void OnFft2d();
+	afx_msg void OnInverseFft2d();
+	afx_msg void OnLowPassFilter();
+	afx_msg void OnHighPassFilter();
+	afx_msg void OnNoiseRemove();
 };
 
 #ifndef _DEBUG  // ImageProView.cpp의 디버그 버전

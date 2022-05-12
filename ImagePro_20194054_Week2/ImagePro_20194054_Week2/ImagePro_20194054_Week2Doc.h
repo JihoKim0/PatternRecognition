@@ -5,6 +5,10 @@
 
 #pragma once
 
+typedef struct {
+	double re;
+	double im;
+}complex_num;
 
 class CImagePro20194054Week2Doc : public CDocument
 {
@@ -27,6 +31,9 @@ public:
 
 	//모핑 결과 저장을 위한 변수
 	unsigned char** morphedImg[10];
+	
+	complex_num **fft_result;	//FFT 결과를 저장하기 위한 기억 장소 포인터
+	complex_num** ifft_result;	//IFFT 결과를 저장하기 위한 기억 장소 포인터
 
 // 작업입니다.
 public:
@@ -86,5 +93,16 @@ public:
 	void GeometryDiagonal();
 	void GeometryWarping();
 	void GeometryMorphing();
+	void FFT_2D();
+	void FFT_1D(complex_num x[], int N, int log2N);
+	void shuffle_data(complex_num x[], int N, int log2N);
+	int reverse_bit_order(int index, int log2N);
+	void butterfly_computation(complex_num x[], int N, int log2N);
+	void Inverse_FFT_2D();
+	void Inverse_FFT_1D(complex_num x[], int N, int log2N);
+	void inverse_butterfly_computation(complex_num x[], int N, int log2N);
+	void LowPassFilter();
+	void HighPassFilter();
+	void NoiseRemove();
 };
  

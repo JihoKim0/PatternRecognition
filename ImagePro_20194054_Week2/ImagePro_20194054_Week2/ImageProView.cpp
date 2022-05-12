@@ -24,8 +24,8 @@
 #define TWO_IMAGES_SCALED 4
 #define MORPHING 8
 #define AVI_FILE 16
-
 #define CUP_TRACKING 4
+
 // CImageProView
 
 IMPLEMENT_DYNCREATE(CImageProView, CScrollView)
@@ -60,6 +60,11 @@ BEGIN_MESSAGE_MAP(CImageProView, CScrollView)
 	ON_COMMAND(ID_GEOMETRY_MORPHING, &CImageProView::OnGeometryMorphing)
 	ON_COMMAND(ID_AVI_VIEW, &CImageProView::OnAviView)
 	ON_COMMAND(ID_CUP_TRACKING, &CImageProView::OnCupTracking)
+	ON_COMMAND(ID_FFT_2D, &CImageProView::OnFft2d)
+	ON_COMMAND(ID_Inverse_FFT_2D, &CImageProView::OnInverseFft2d)
+	ON_COMMAND(ID_LOW_PASS_FILTER, &CImageProView::OnLowPassFilter)
+	ON_COMMAND(ID_HIGH_PASS_FILTER, &CImageProView::OnHighPassFilter)
+	ON_COMMAND(ID_NOISE_REMOVE, &CImageProView::OnNoiseRemove)
 END_MESSAGE_MAP()
 
 // CImageProView 생성/소멸
@@ -560,7 +565,199 @@ void CImageProView::OnCupTracking()
 }
 
 
-void CImageProView::Find_Cup()
+void CImageProView::Find_Cup(unsigned char * image)
 {
-	// TODO: 여기에 구현 코드 추가.
+	int x, y;
+	int hue_col_max;
+	int hue_row_max;
+	int count;
+	int hue_col_avg[320];
+	int hue_row_avg[240];
+	int Cup_xmin;
+	int Cup_xmax;
+	int Cup_ymin;
+	int Cup_ymax;
+	int hue_row_thresh;
+	int hue_col_thresh;
+	int imageWidth = 320;
+	int imageHeight = 240;
+
+	// row, column 별로 hue값 평균과 명암값 평균 계산
+	for (x = 0; x < imageWidth; x++) {
+		hue_col_avg[x] = 0;
+		for (y = 0; y < imageHeight; y++) {
+			hue_col_avg[x] += compute_hue(image, x, y);
+		}
+		hue_col_avg[x] = hue_col_avg[x] / imageHeight;
+	}
+	for (y = 0; y < imageHeight; y++) {
+		hue_row_avg[y] = 0;
+		for (x = 0; x < imageWidth; x++) {
+			hue_row_avg[y] += compute_hue(image, x, y);
+		}
+		hue_row_avg[y] = hue_row_avg[y] / imageWidth;
+	}
+
+	// 최대값 계산
+	hue_col_max = 0;
+	for (x = 0; x < imageWidth; x++)
+		if (hue_col_avg[x] > hue_col_max)
+			hue_col_max = hue_col_avg[x];
+	hue_row_max = 0;
+	for (y = 0; y < imageHeight; y++)
+		if (hue_row_avg[y] > hue_row_max)
+			hue_row_max = hue_row_avg[y];
+	hue_col_thresh = (int)(hue_col_max * 0.6);
+	hue_row_thresh = (int)(hue_row_max * 0.6);
+
+	// column, row 모두 hue값이 임계치 이상인 부분 검출
+	Cup_xmax = imageWidth - 1;
+	Cup_xmin = 0;
+	Cup_ymax = imageHeight - 1;
+	Cup_ymin = 0;
+
+	count = 0;
+	for (x = 0; x < imageWidth; x++) {
+		if (hue_col_avg[x] > hue_col_thresh)
+			count++;
+		else
+			count = 0;
+		if (count > 10) {
+			Cup_xmin = x;
+			break;
+		}
+	}
+	count = 0;
+	for (x = imageWidth
+		- 1; x > 0; x--) {
+		if (hue_col_avg[x] > hue_col_thresh)
+			count++;
+		else
+			count = 0;
+		if (count > 10) {
+			Cup_xmax = x;
+			break;
+		}
+	}
+
+	count = 0;
+	for (y = 0; y < imageHeight; y++) {
+		if (hue_row_avg[y] > hue_row_thresh)
+			count++;
+		else
+			count = 0;
+		if (count > 10) {
+			Cup_ymin = y;
+			break;
+		}
+	}
+	count = 0;
+	for (y = imageHeight
+		- 1; y > 0; y--) {
+		if (hue_row_avg[y] > hue_row_thresh)
+			count++;
+		else
+			count = 0;
+		if (count > 10) {
+			Cup_ymax = y;
+			break;
+		}
+	}
+	draw_rect(image, Cup_xmin, Cup_ymin, Cup_xmax, Cup_ymax);
+}
+
+
+void CImageProView::draw_rect(unsigned char* image, int xmin, int ymin, int xmax, int ymax)
+{
+	int x, y;
+	for (x = xmin; x <= xmax; x++) {
+		image[(ymin * 320 * 3) + x * 3] = 255;
+		image[(ymin * 320 * 3) + x * 3 + 1] = 0;
+		image[(ymin * 320 * 3) + x * 3 + 2] = 0;
+		image[(ymax * 320 * 3) + x * 3] = 0;
+		image[(ymax * 320 * 3) + x * 3 + 1] = 255;
+		image[(ymax * 320 * 3) + x * 3 + 2] = 0;
+	}
+	for (y = ymin; y <= ymax; y++) {
+		image[(y * 320 * 3) + xmin * 3] = 0;
+		image[(y * 320 * 3) + xmin * 3 + 1] = 0;
+		image[(y * 320 * 3) + xmin * 3 + 2] = 255;
+		image[(y * 320 * 3) + xmax * 3] = 255;
+		image[(y * 320 * 3) + xmax * 3 + 1] = 255;
+		image[(y * 320 * 3) + xmax * 3 + 2] = 255;
+	}
+}
+
+
+int CImageProView::compute_hue(unsigned char* image, int x, int y)
+{
+	int hue;
+	float b, g, r;
+
+	b = (float)image[3 * y * 320 + 3 * x];
+	g = (float)image[3 * y * 320 + 3 * x + 1];
+	r = (float)image[3 * y * 320 + 3 * x + 2];
+
+	if (r > g)	hue = 255 - (int)(255 * (g / r));
+	else hue = 0;
+
+	return hue;
+}
+
+
+void CImageProView::OnFft2d()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	pDoc->FFT_2D();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnInverseFft2d()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+	pDoc->Inverse_FFT_2D();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+void CImageProView::OnLowPassFilter()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+	pDoc->LowPassFilter();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnHighPassFilter()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+	pDoc->HighPassFilter();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnNoiseRemove()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+	pDoc->NoiseRemove();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
 }
