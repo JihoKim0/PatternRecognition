@@ -1379,3 +1379,63 @@ void CImagePro20194054Week2Doc::NoiseRemove()
 	fft_result[0][192].im = 0.0;
 	Inverse_FFT_2D(); //IFFT 실행
 }
+
+
+void CImagePro20194054Week2Doc::ZoomInDialog(float zoom_in_ratio)
+{
+	int i, y, x;
+	float src_x, src_y;
+	float alpha, beta;
+	float E, F;
+	int Ax, Ay, Bx, By, Cx, Cy, Dx, Dy;
+
+	gImageWidth = (int)(imageWidth * zoom_in_ratio);
+	gImageHeight = (int)(imageHeight * zoom_in_ratio);
+
+	gResultImg = (unsigned char**)malloc(gImageHeight * sizeof(unsigned char*));
+	for (i = 0; i < gImageHeight; i++) {
+		gResultImg[i] = (unsigned char*)malloc(gImageWidth * depth);
+	}
+
+	for (y = 0; y < gImageHeight; y++)
+		for (x = 0; x < gImageWidth; x++) {
+			src_x = x / zoom_in_ratio;
+			src_y = y / zoom_in_ratio;
+			alpha = src_x - x / zoom_in_ratio;
+			beta = src_y - y / zoom_in_ratio;
+
+			Ax = (int)(x / zoom_in_ratio);
+			Ay = (int)(y / zoom_in_ratio);
+			Bx = Ax + 1;
+			By = Ay;
+			Cx = Ax;
+			Cy = Ay + 1;
+			Dx = Ax + 1;
+			Dy = Ay + 1;
+
+			//예외처리
+			if (Bx > imageWidth - 1) Bx = imageWidth - 1;
+			if (Dx > imageWidth - 1) Dx = imageWidth - 1;
+			if (Cy > imageHeight - 1) Cy = imageHeight - 1;
+			if (Dy > imageHeight - 1) Dy = imageHeight - 1;
+
+			E = inputImg[Ay][Ax] * (1 - alpha) + inputImg[By][Bx] * alpha;
+			F = inputImg[Cy][Cx] * (1 - alpha) + inputImg[Dy][Dx] * alpha;
+
+			gResultImg[y][x] = (int)(E * (1 - beta) + F * beta);
+		}
+}
+
+void CImagePro20194054Week2Doc::PixelAddValue(int added_value)
+{
+	int value = 0;
+
+	for (int y = 0; y < imageHeight; y++)
+		for (int x = 0; x < imageWidth * depth; x++) {
+			value = inputImg[y][x] + added_value;
+			if (value > 255) resultImg[y][x] = 255;
+			else resultImg[y][x] = value;
+		}
+
+	UpdateAllViews(FALSE);
+}

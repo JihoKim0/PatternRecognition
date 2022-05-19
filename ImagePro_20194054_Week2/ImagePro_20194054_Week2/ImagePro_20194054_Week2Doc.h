@@ -104,5 +104,7 @@ public:
 	void LowPassFilter();
 	void HighPassFilter();
 	void NoiseRemove();
+	void ZoomInDialog(float zoom_in_ratio);
+	void PixelAddValue(int added_value);
 };
  

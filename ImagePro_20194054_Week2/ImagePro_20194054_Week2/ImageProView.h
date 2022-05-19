@@ -80,6 +80,8 @@ public:
 	afx_msg void OnLowPassFilter();
 	afx_msg void OnHighPassFilter();
 	afx_msg void OnNoiseRemove();
+	afx_msg void OnZoomInDialog();
+	afx_msg void OnPixelAddSlider();
 };
 
 #ifndef _DEBUG  // ImageProView.cpp의 디버그 버전

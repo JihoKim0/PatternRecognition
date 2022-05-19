@@ -15,6 +15,9 @@
 
 #include <vfw.h>
 
+#include "CInputDlg.h"
+#include "CSliderDlg.h"
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -65,6 +68,8 @@ BEGIN_MESSAGE_MAP(CImageProView, CScrollView)
 	ON_COMMAND(ID_LOW_PASS_FILTER, &CImageProView::OnLowPassFilter)
 	ON_COMMAND(ID_HIGH_PASS_FILTER, &CImageProView::OnHighPassFilter)
 	ON_COMMAND(ID_NOISE_REMOVE, &CImageProView::OnNoiseRemove)
+	ON_COMMAND(ID_ZOOM_IN_DIALOG, &CImageProView::OnZoomInDialog)
+	ON_COMMAND(ID_PIXEL_ADD_SLIDER, &CImageProView::OnPixelAddSlider)
 END_MESSAGE_MAP()
 
 // CImageProView 생성/소멸
@@ -760,4 +765,31 @@ void CImageProView::OnNoiseRemove()
 	pDoc->NoiseRemove();
 	viewMode = TWO_IMAGES;
 	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnZoomInDialog()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+	if (pDoc->inputImg == NULL) return;
+	CInputDlg inputDlg; // 대화상자 클래스의 인스턴스 생성
+	inputDlg.DoModal(); // 대화상자가 화면에 나타나도록 함
+	// 확대 함수 호출하고 사용자가 입력한 확대 비율 전달
+	pDoc->ZoomInDialog(inputDlg.m_zoom_in_ratio);
+	viewMode = TWO_IMAGES_SCALED;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnPixelAddSlider()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	CSliderDlg sliderDlg; // 대화상자 인스턴스 생성
+	sliderDlg.DoModal(); // 대화상자가 나타나도록 함
+
 }
