@@ -22,12 +22,20 @@
 #define new DEBUG_NEW
 #endif
 
+
+#define NO_OP 0
+#define SHARPENING 1
+#define SUBTRACT 2
+
 #define TWO_IMAGES 1
 #define THREE_IMAGES 2
 #define TWO_IMAGES_SCALED 4
 #define MORPHING 8
 #define AVI_FILE 16
 #define CUP_TRACKING 4
+
+#define WARPING_MOUSE 8
+#define MARKER_RECOGNITION 16
 
 // CImageProView
 
@@ -70,13 +78,23 @@ BEGIN_MESSAGE_MAP(CImageProView, CScrollView)
 	ON_COMMAND(ID_NOISE_REMOVE, &CImageProView::OnNoiseRemove)
 	ON_COMMAND(ID_ZOOM_IN_DIALOG, &CImageProView::OnZoomInDialog)
 	ON_COMMAND(ID_PIXEL_ADD_SLIDER, &CImageProView::OnPixelAddSlider)
+	ON_COMMAND(ID_GEOMETRY_WARPING_MOUSE, &CImageProView::OnGeometryWarpingMouse)
+	ON_WM_LBUTTONDOWN()
+	ON_WM_MOUSEMOVE()
+	ON_WM_LBUTTONUP()
+	ON_COMMAND(ID_FIND_CONTOURS, &CImageProView::OnFindContours)
+	ON_COMMAND(ID_GEOMETRICAL_FEATURES, &CImageProView::OnGeometricalFeatures)
+	ON_COMMAND(ID_GEOMETRICAL_FEATURES_LINE_APPROX, &CImageProView::OnGeometricalFeaturesLineApprox)
+	ON_COMMAND(ID_FIND_TRIANGLES, &CImageProView::OnFindTriangles)
+	ON_COMMAND(ID_MARKER_RECOGNITION, &CImageProView::OnMarkerRecognition)
 END_MESSAGE_MAP()
 
 // CImageProView 생성/소멸
 CImageProView::CImageProView() noexcept
 {
 	// TODO: 여기에 생성 코드를 추가합니다.
-
+	operation = NO_OP;
+	mouse_input_started = FALSE;
 }
 
 CImageProView::~CImageProView()
@@ -155,17 +173,19 @@ void CImageProView::OnDraw(CDC* pDC)
 
 	}
 	else if (pDoc->depth == 3) {	//컬러 영상 출력
-		for (int y = 0; y < pDoc->imageHeight; y++)
+		for (int y = 0; y < pDoc->imageHeight; y++) // 입력 영상 출력
 			for (int x = 0; x < pDoc->imageWidth; x++)
 				pDC->SetPixel(x, y, RGB(pDoc->inputImg[y][3 * x],
-					pDoc->inputImg[y][3 * x + 1],
-					pDoc->inputImg2[y][3 * x + 2]));
+					pDoc->inputImg[y][3 * x + 1], pDoc->inputImg[y][3 * x + 2]));
+
 		if (viewMode == THREE_IMAGES) {
-			for (int y = 0; y < pDoc->imageHeight; y++)   // 두번째입력영상출력
+			for (int y = 0; y < pDoc->imageHeight; y++) // 두번째 입력 영상 출력
 				for (int x = 0; x < pDoc->imageWidth; x++)
-					pDC->SetPixel(x + pDoc->imageWidth + 30, y, RGB(pDoc->inputImg2[y][3 * x],
-						pDoc->inputImg2[y][3 * x + 1], pDoc->inputImg2[y][3 * x + 2]));
-			for (int y = 0; y < pDoc->imageHeight; y++)       // 결과영상출력
+					pDC->SetPixel(x + pDoc->imageWidth + 30, y,
+						RGB(pDoc->inputImg2[y][3 * x],
+							pDoc->inputImg2[y][3 * x + 1],
+							pDoc->inputImg2[y][3 * x + 2]));
+			for (int y = 0; y < pDoc->imageHeight; y++) // 결과 영상 출력
 				for (int x = 0; x < pDoc->imageWidth; x++)
 					pDC->SetPixel(x + pDoc->imageWidth * 2 + 60, y,
 						RGB(pDoc->resultImg[y][3 * x],
@@ -179,6 +199,36 @@ void CImageProView::OnDraw(CDC* pDC)
 						RGB(pDoc->resultImg[y][3 * x],
 							pDoc->resultImg[y][3 * x + 1], pDoc->resultImg[y][3 * x + 2]));
 		}
+	}
+
+	if (operation == WARPING_MOUSE) {
+		CPen Pen;
+
+		Pen.CreatePen(PS_SOLID, 0, RGB(0, 0, 255)); // 펜 생성
+		pDC->SelectObject(&Pen); // 펜 선택
+		pDC->MoveTo(Ax, Ay); // 시작 위치로 이동
+		pDC->LineTo(Bx, By); // 현재 위치로 선을 그림
+		Pen.DeleteObject(); // 펜 삭제
+	}
+
+	if (operation == MARKER_RECOGNITION) {
+		CPen Pen;
+		CBrush Brush;
+		Brush.CreateSolidBrush(RGB(255, 255, 0));
+		Pen.CreatePen(PS_SOLID, 0, RGB(255, 255, 0));
+		pDC->SelectObject(&Brush);
+		pDC->SelectObject(&Pen);
+		for (int i = 0; i < pDoc->nSquares; i++) {
+			pDC->MoveTo(pDoc->squares[i].pt[0].x,
+				pDoc->squares[i].pt[0].y);
+			for (int j = 1; j < 4; j++)
+			{
+				pDC->LineTo(pDoc->squares[i].pt[j].x, pDoc->squares[i].pt[j].y);
+			}
+			pDC->LineTo(pDoc->squares[i].pt[0].x, pDoc->squares[i].pt[0].y);
+		}
+		Brush.DeleteObject();
+		Pen.DeleteObject();
 	}
 }
 
@@ -792,4 +842,127 @@ void CImageProView::OnPixelAddSlider()
 	CSliderDlg sliderDlg; // 대화상자 인스턴스 생성
 	sliderDlg.DoModal(); // 대화상자가 나타나도록 함
 
+}
+
+
+void CImageProView::OnGeometryWarpingMouse()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	operation = WARPING_MOUSE;
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+void CImageProView::OnLButtonDown(UINT nFlags, CPoint point)
+{
+	if (operation == WARPING_MOUSE) {
+		Ax = point.x; // 시작 위치를 (Ax, Ay)로 설정
+		Ay = point.y;
+
+		mouse_input_started = TRUE; // 마우스 입력 시작 설정
+	}
+
+	CScrollView::OnLButtonDown(nFlags, point);
+}
+
+
+void CImageProView::OnMouseMove(UINT nFlags, CPoint point)
+{
+	if (operation == WARPING_MOUSE && mouse_input_started == TRUE)
+	{
+		Bx = point.x; // 현재 위치를 (Bx, By)로 설정
+		By = point.y; // (Ax, Ay)에서 (Bx,By)로 직선을 그림
+		Invalidate(FALSE); // 화면을 새로 그림
+	}
+
+
+	CScrollView::OnMouseMove(nFlags, point);
+}
+
+
+void CImageProView::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+	if (operation == WARPING_MOUSE && mouse_input_started == TRUE) {
+		Bx = point.x; // 현재 위치 저장
+		By = point.y;
+		mouse_input_started = FALSE; // 마우스 입력 종료
+		pDoc->GeometryWarpingMouse(Ax, Ay, Bx, By); // 워핑 함수 호출
+		Invalidate(FALSE);
+	}
+
+	CScrollView::OnLButtonUp(nFlags, point);
+}
+
+
+void CImageProView::OnFindContours()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	pDoc->FindContours(pDoc->inputImg, pDoc->resultImg);
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometricalFeatures()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	pDoc->GeometricalFeatures();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnGeometricalFeaturesLineApprox()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	pDoc->GeometricalFeaturesLineApprox();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnFindTriangles()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	pDoc->FindTriangles();
+	viewMode = TWO_IMAGES;
+	Invalidate(FALSE);
+}
+
+
+void CImageProView::OnMarkerRecognition()
+{
+	CImagePro20194054Week2Doc* pDoc = GetDocument();
+	ASSERT_VALID(pDoc);
+
+	if (pDoc->inputImg == NULL) return;
+
+	pDoc->MarkerRecognition();
+	viewMode = TWO_IMAGES;
+	operation = MARKER_RECOGNITION;
+	Invalidate(FALSE);
 }

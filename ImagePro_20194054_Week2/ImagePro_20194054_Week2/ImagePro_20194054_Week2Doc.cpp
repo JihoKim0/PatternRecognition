@@ -18,6 +18,9 @@
 #define new DEBUG_NEW
 #endif
 
+#define MAX_CONTOUR_PIXELS 4096
+#define MIN_CONTOUR_PIXELS 3
+
 // CImagePro20194054Week2Doc
 
 IMPLEMENT_DYNCREATE(CImagePro20194054Week2Doc, CDocument)
@@ -233,7 +236,7 @@ void CImagePro20194054Week2Doc::LoadImageFile(CArchive &ar)
 	CFile *fp = ar.GetFile();
 	CString fname = fp->GetFilePath();
 	//파일의 헤더 읽기
-	if(strcmp(strrchr(fname, '.'), ".ppm")==0|| strcmp(strrchr(fname, '.'), ".PPM") == 0 ||
+	if(strcmp(strrchr(fname, '.'), ".ppm") == 0 || strcmp(strrchr(fname, '.'), ".PPM") == 0 ||
 		strcmp(strrchr(fname, '.'), ".PGM") == 0 || strcmp(strrchr(fname, '.'), ".pgm") == 0)
 	{
 		ar.ReadString(type);
@@ -1438,4 +1441,1277 @@ void CImagePro20194054Week2Doc::PixelAddValue(int added_value)
 		}
 
 	UpdateAllViews(FALSE);
+}
+
+
+void CImagePro20194054Week2Doc::GeometryWarpingMouse(int Ax, int Ay, int Bx, int By)
+{
+	int Px, Py;
+
+	if (Ax < Bx) Px = Ax - (Bx - Ax) / 2;
+	else Px = Ax + (Ax - Bx) / 2;
+
+	if (Ay < By) Py = Ay - (By - Ay) / 2;
+	else Py = Ay + (Ay - By) / 2;
+
+	int num_lines = 5; // 제어선 수
+
+	// 입력 영상 제어선
+	control_line source_lines[5] = { {Px,Py,Ax,Ay}, {0,0,imageWidth - 1,0},
+	{0,0,0,imageHeight - 1}, {0,imageHeight - 1, imageWidth - 1, imageHeight - 1},
+	{imageHeight - 1, 0, imageWidth - 1, imageHeight - 1}, };
+
+	// 출력 영상 제어선
+	control_line dest_lines[5] = { {Px,Py,Bx,By}, {0,0,imageWidth - 1,0},
+	{0,0,0,imageHeight - 1}, {0,imageHeight - 1, imageWidth - 1, imageHeight - 1},
+	{imageHeight - 1, 0, imageWidth - 1, imageHeight - 1}, };
+
+	double u;       // 수직 교차점의 위치   
+	double h;       // 제어선으로부터 픽셀의 수직 변위 
+	double d;       // 제어선과 픽셀 사이의 거리 
+	double tx, ty;    // 결과영상 픽셀에 대응되는 입력 영상 픽셀 사이의 변위의 합  
+	double xp, yp;  // 각 제어선에 대해 계산된 입력 영상의 대응되는 픽셀 위치    
+	double weight;    // 각 제어선의 가중치       
+	double totalWeight;  // 가중치의 합          
+	double a = 0.001;
+	double b = 2.0;
+	double p = 0.75;
+	int x1, x2, x3, y1, y2, y3;
+	int src_x1, src_y1, src_x2, src_y2;
+	double src_line_length, dest_line_length;
+
+	int line;
+	int source_x, source_y;
+	int last_row, last_col;
+	double m;
+	double fx, fy;
+	int x, y;
+
+	last_row = imageHeight - 1;
+	last_col = imageWidth - 1;
+
+	// 출력 영상의 각 픽셀에 대하여 
+	for (y = 0; y < imageHeight; y++)
+	{
+		for (x = 0; x < imageWidth; x++)
+		{
+			totalWeight = 0.0;
+			tx = 0.0;
+			ty = 0.0;
+
+			// 각 제어선에 대하여 
+			for (line = 0; line < num_lines; line++)
+			{
+				x1 = dest_lines[line].Px;
+				y1 = dest_lines[line].Py;
+				x2 = dest_lines[line].Qx;
+				y2 = dest_lines[line].Qy;
+				x3 = x;
+				y3 = y;
+
+				dest_line_length = sqrt((double)((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+
+				// 수직교차점의 위치 및 픽셀의 수직 변위 계산 
+				u = (double)((x3 - x1) * (x2 - x1) + (y3 - y1) * (y2 - y1)) /
+					(double)((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+				h = (double)((y3 - y1) * (x2 - x1) - (x3 - x1) * (y2 - y1)) / dest_line_length;
+
+				// 제어선과 픽셀 사이의 거리 계산 
+				if (u < 0) d = sqrt((double)((x3 - x1) * (x3 - x1) + (y3 - y1) * (y3 - y1)));
+				else if (u > 1) d = sqrt((double)((x3 - x2) * (x3 - x2) + (y3 - y2) * (y3 - y2)));
+				else d = fabs(h);
+
+				src_x1 = source_lines[line].Px;
+				src_y1 = source_lines[line].Py;
+				src_x2 = source_lines[line].Qx;
+				src_y2 = source_lines[line].Qy;
+				src_line_length = sqrt((double)((src_x2 - src_x1) * (src_x2 - src_x1) +
+					(src_y2 - src_y1) * (src_y2 - src_y1)));
+
+				// 입력 영상에서의 대응 픽셀 위치 계산 
+				xp = src_x1 + u * (src_x2 - src_x1) - h * (src_y2 - src_y1) / src_line_length;
+				yp = src_y1 + u * (src_y2 - src_y1) + h * (src_x2 - src_x1) / src_line_length;
+
+				// 제어선에 대한 가중치 계산 
+				weight = pow((pow((double)(dest_line_length), p) / (a + d)), b);
+
+				// 대응 픽셀과의 변위 계산 
+				tx += (xp - x) * weight;
+				ty += (yp - y) * weight;
+				totalWeight += weight;
+			}
+
+			source_x = x + (int)(tx / totalWeight + 0.5);
+			source_y = y + (int)(ty / totalWeight + 0.5);
+
+			// 영상의 경계를 벗어나는지 검사 
+			if (source_x < 0) source_x = 0;
+			if (source_x > last_col) source_x = last_col;
+			if (source_y < 0) source_y = 0;
+			if (source_y > last_row) source_y = last_row;
+
+			if (depth == 1)
+				resultImg[y][x] = inputImg[source_y][source_x];
+			else {
+				resultImg[y][3 * x] = inputImg[source_y][3 * source_x];
+				resultImg[y][3 * x + 1] = inputImg[source_y][3 * source_x + 1];
+				resultImg[y][3 * x + 2] = inputImg[source_y][3 * source_x + 2];
+			}
+		}
+	}
+
+	for (line = 0; line < num_lines; line++)
+	{
+		if (abs(dest_lines[line].Px - dest_lines[line].Qx) >
+			abs(dest_lines[line].Py - dest_lines[line].Qy)) {
+			if (dest_lines[line].Px <= dest_lines[line].Qx) {
+				x1 = dest_lines[line].Px;
+				y1 = dest_lines[line].Py;
+				x2 = dest_lines[line].Qx;
+				y2 = dest_lines[line].Qy;
+			}
+			else {
+				x2 = dest_lines[line].Px;
+				y2 = dest_lines[line].Py;
+				x1 = dest_lines[line].Qx;
+				y1 = dest_lines[line].Qy;
+			}
+
+			m = (double)(y2 - y1) / (double)(x2 - x1);
+			fy = (double)y1;
+			for (x = x1; x <= x2; x++) {
+				y = (int)fy;
+				fy = fy + m;
+			}
+		}
+		else {
+			if (dest_lines[line].Py <= dest_lines[line].Qy) {
+				x1 = dest_lines[line].Px;
+				y1 = dest_lines[line].Py;
+				x2 = dest_lines[line].Qx;
+				y2 = dest_lines[line].Qy;
+			}
+			else {
+				x2 = dest_lines[line].Px;
+				y2 = dest_lines[line].Py;
+				x1 = dest_lines[line].Qx;
+				y1 = dest_lines[line].Qy;
+			}
+
+			m = (double)(x2 - x1) / (double)(y2 - y1);
+			fx = (double)x1;
+			for (y = y1; y <= y2; y++) {
+				x = (int)fx;
+				fx = fx + m;
+			}
+		}
+	}
+}
+
+
+void CImagePro20194054Week2Doc::FindContours(unsigned char** binaryImg, unsigned char** contourImg)
+{
+	int x, y;
+	int x_start, y_start, k, p, u, v, n;
+	int pixel_cnt, contourFound;
+	unsigned char** visited;
+	int contour_x[MAX_CONTOUR_PIXELS];
+	int contour_y[MAX_CONTOUR_PIXELS];
+
+	// visited : 한번 방문한 픽셀을 표시하기 위한 영상
+	visited = (unsigned char**)malloc(imageHeight * sizeof(unsigned char*));
+
+	for (y = 0; y < imageHeight; y++)
+		visited[y] = (unsigned char*)malloc(imageWidth * sizeof(unsigned char));
+
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++)
+			visited[y][x] = FALSE;
+
+	// 이웃한 픽셀들의 주소
+	struct pointStruct {
+		int y;
+		int x;
+	} neighbor[8] = { {-1, 0}, {-1, 1}, {0, 1}, {1,1}, {1, 0}, {1,-1}, {0, -1}, {-1,-1} };
+
+	nContour = 0;
+
+	// 윤곽선 검출
+	for (y = 0; y < imageHeight && nContour < MAX_CONTOURS - 1; y++)
+	{
+		for (x = 0; x < imageWidth && nContour < MAX_CONTOURS - 1; x++)
+		{
+			// 단계 1 : 윤곽선 검출 시작점
+			if ((y == 0 || y > 0 && binaryImg[y - 1][x] != 0) &&
+				binaryImg[y][x] == 0 && visited[y][x] == FALSE)
+			{
+				contourFound = TRUE;
+				pixel_cnt = 0;
+				x_start = x; // 시작점의 위치
+				y_start = y; // 시작점의 위치
+				p = 1; // 초기 검사 시작 위치
+
+				// 단계 2: 처음 시작점으로 돌아올때까지 탐색
+				do
+				{
+					// 이웃한 가장자리 픽셀 탐색
+					for (k = 0; k < 8; k++)
+					{
+						u = x + neighbor[p].x; // 이웃 픽셀의 x 좌표
+						v = y + neighbor[p].y; // 이웃 픽셀의 y 좌표
+
+						// 이웃 픽셀이 영상 내부에 있고 물체색이면
+						// 이웃한 가장자리 픽셀 발견 성공
+						if (v >= 0 && v <= imageHeight - 1 && u >= 0 &&
+							u <= imageWidth - 1 && binaryImg[v][u] == 0) break;
+						p = (p + 1) % 8; // 다음 픽셀로 이동
+					}
+					// 윤곽선 발견 실패 : 이웃한 가장자리 픽셀이 없거나 최대 길이 초과
+					if (k == 8 || pixel_cnt >= MAX_CONTOUR_PIXELS) {
+						contourFound = FALSE;
+						break;
+					}
+
+					// 이웃한 가장자리 픽셀 발견
+					visited[y][x] = TRUE;
+					contour_x[pixel_cnt] = x;
+					contour_y[pixel_cnt] = y;
+
+					pixel_cnt++; // 윤곽선의 픽셀 수 증가
+
+					// 탐색의 중심점 이동
+					x = x + neighbor[p].x;
+					y = y + neighbor[p].y;
+
+					// 다음 탐색에서의 검사 시작 위치 계산
+					if (p == 0 || p == 1) p = 7;
+					else if (p == 2 || p == 3) p = 1;
+					else if (p == 4 || p == 5) p = 3;
+					else p = 5;
+				} while (!(x == x_start && y == y_start));
+
+				// 짧은 윤곽선은 무시
+				if (contourFound == TRUE && pixel_cnt > MIN_CONTOUR_PIXELS) {
+					contours[nContour].x = (int*)malloc(pixel_cnt * sizeof(int));
+					contours[nContour].y = (int*)malloc(pixel_cnt * sizeof(int));
+				
+					// 윤곽선의 픽셀 위치 저장
+					for (n = 0; n < pixel_cnt; n++) {
+						contours[nContour].x[n] = contour_x[n];
+						contours[nContour].y[n] = contour_y[n];
+					}
+					contours[nContour].nVertices = pixel_cnt;
+					contours[nContour].angle = NULL;
+					nContour++; // 윤곽선의 수 증가
+				}
+			}
+		}
+	}
+
+	// 윤곽선을 저장할 영상을 초기화
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++)
+			contourImg[y][x] = 255;
+	// 윤곽선을 영상에 표시
+	for (k = 0; k < nContour; k++)
+		for (n = 0; n < contours[k].nVertices; n++)
+			contourImg[contours[k].y[n]][contours[k].x[n]] = 0;
+
+}
+
+double CImagePro20194054Week2Doc::ContourLength(ipCONTOUR* contour)
+{
+	int n;
+	double length = 0, dx, dy;
+
+	for (n = 0; n < contour->nVertices; n++) {
+		dx = contour->x[(n + 1) % contour->nVertices] - contour->x[n];
+		dy = contour->y[(n + 1) % contour->nVertices] - contour->y[n];
+		length += sqrt(dx * dx + dy * dy);
+	}
+
+	return length;
+}
+
+
+double CImagePro20194054Week2Doc::ContourArea(ipCONTOUR* contour)
+{
+	double area = 0;
+
+	if (contour->nVertices > 0) {
+		for (int i = 0; i < contour->nVertices; i++)
+			area = area + contour->x[i] * contour->y[(i + 1) % contour->nVertices]
+			- contour->x[(i + 1) % contour->nVertices] * contour->y[i];
+		area = area * 0.5;
+	}
+	else
+		area = 0;
+
+	return fabs(area);
+}
+
+
+void CImagePro20194054Week2Doc::ContourCentroid(ipCONTOUR* contour, double contour_area)
+{
+	double cx = 0, cy = 0;
+
+	if (contour->nVertices > 0) {
+		for (int i = 0; i < contour->nVertices; i++) {
+			cx = cx + (contour->x[i] + contour->x[(i + 1) % contour->nVertices])
+				* (contour->x[i] * contour->y[(i + 1) % contour->nVertices] -
+					contour->x[(i + 1) % contour->nVertices] * contour->y[i]);
+
+			cy = cy + (contour->y[i] + contour->y[(i + 1) % contour->nVertices]) *
+				(contour->x[i] * contour->y[(i + 1) % contour->nVertices] -
+					contour->x[(i + 1) % contour->nVertices] * contour->y[i]);
+		}
+		cx = cx / (6 * contour_area);
+		cy = cy / (6 * contour_area);
+	}
+	else {
+		cx = 0;
+		cy = 0;
+	}
+
+	contour->cx = cx;
+	contour->cy = cy;
+}
+
+
+int CImagePro20194054Week2Doc::IsConvex(ipCONTOUR* contour)
+{
+	int is_convex = 1;
+	ipPOINT prev_pt, cur_pt;
+	int orientation;
+
+	prev_pt.x = contour->x[contour->nVertices - 1];
+	prev_pt.y = contour->y[contour->nVertices - 1];
+	cur_pt.x = contour->x[0];
+	cur_pt.y = contour->y[0];
+
+	int dx0 = cur_pt.x - prev_pt.x;
+	int dy0 = cur_pt.y - prev_pt.y;
+
+	for (int i = 0; i < contour->nVertices; i++) {
+		int dxdy0, dydx0;
+		int dx, dy;
+		prev_pt = cur_pt;
+		cur_pt.x = contour->x[(i + 1) % contour->nVertices];
+		cur_pt.y = contour->y[(i + 1) % contour->nVertices];
+		dx = cur_pt.x - prev_pt.x;
+		dy = cur_pt.y - prev_pt.y;
+		dxdy0 = dx * dy0;
+		dydx0 = dy * dx0;
+		orientation |= (dydx0 > dxdy0) ? 1 : ((dydx0 < dxdy0) ? 2 : 3);
+
+		if (orientation == 3) {
+			is_convex = 0;
+			break;
+		}
+		dx0 = dx;
+		dy0 = dy;
+	}
+	return is_convex;
+}
+
+void CImagePro20194054Week2Doc::GeometricalFeatures()
+{
+	double length, area, circularity;
+	int is_convex, nVertices;
+	char buf[256];
+	FindContours(inputImg, resultImg);
+	for (int n = 0; n < nContour; n++) {
+		length = ContourLength(contours);
+		is_convex = IsConvex(contours);
+		area = ContourArea(contours);
+		ContourCentroid(contours, area);
+		circularity = (4.0 * PI * area) / (length * length);
+		nVertices = contours[0].nVertices;
+		sprintf_s(buf, " nVertices = %d \n length = %f \n area = %f \n circularity = % f \n center = (% f, % f) \n is_convex = % d \n\n",
+			nVertices, length, area, circularity, fabs(contours[0].cx), abs(contours[0].cy), is_convex);
+		AfxMessageBox(buf);
+	}
+}
+
+
+void CImagePro20194054Week2Doc::GeometricalFeaturesLineApprox()
+{
+	double length, area, circularity, angle;
+	int is_convex, nVertices;
+	char buf[256];
+	ipCONTOUR* poly;
+	FindContours(inputImg, resultImg);
+
+	for (int n = 0; n < nContour; n++) {
+		poly = ApproxPoly(0, 0.1);
+		length = ContourLength(poly);
+		is_convex = IsConvex(poly);
+		area = ContourArea(poly);
+		ContourCentroid(poly, area);
+		circularity = (4.0 * PI * area) / (length * length);
+		nVertices = poly->nVertices;
+		angle = ContourAngle(poly);
+		sprintf_s(buf, " nVertices = %d \n length = %f \n area = %f \n angle = %f \n circularity = % f \n center = (% f, % f) \n is_convex = % d \n\n",
+			nVertices, length, area, angle, circularity, fabs(poly->cx), fabs(poly->cy), is_convex);
+		AfxMessageBox(buf);
+	}
+}
+
+typedef struct tag_ipSLICE {
+	int start_index;
+	int end_index;
+}ipSLICE;
+
+#define MAX_STACK 4096
+#define MAX_VERTEX 4096
+
+
+ipCONTOUR* CImagePro20194054Week2Doc::ApproxPoly(int k, double eps)
+{
+	ipCONTOUR* poly = CreateContour();
+
+	int count = contours[k].nVertices;
+	ipPOINT start_pt, end_pt, pt;
+	ipSLICE* slice, * right_slice;
+	int i = 0, j;
+	int le_eps = 0;
+	int prev_start_index;
+	int curr_index;
+	ipSLICE* slice_stack[MAX_STACK];
+	int split_index;
+	int seg_count = 0;
+	int p = 0;
+	int vertex_x[MAX_VERTEX];
+	int vertex_y[MAX_VERTEX];
+
+	/* 단계 1 : 윤곽선에서 서로 가장 멀리 있는 두 점을 발견 */
+	int start_index = 0;
+	for (i = 0; i < 3; i++)
+	{
+		start_pt.x = contours[k].x[start_index];
+		start_pt.y = contours[k].y[start_index];
+		prev_start_index = start_index;
+		int max_dist = 0;
+		for (j = 1; j < count; j++)
+		{
+			int dx, dy, dist;
+			curr_index = (prev_start_index + j) % count;
+			pt.x = contours[k].x[curr_index];
+			pt.y = contours[k].y[curr_index];
+			dx = pt.x - start_pt.x;
+			dy = pt.y - start_pt.y;
+			dist = dx * dx + dy * dy;
+
+			if (dist > max_dist) {
+				max_dist = dist;
+				start_index = curr_index;
+			}
+		}
+		le_eps = max_dist <= eps * contours[k].nVertices;
+	}
+
+	/* 단계 2 : 스택을 초기화 */
+	if (!le_eps)
+	{
+		slice = (ipSLICE*)malloc(sizeof(ipSLICE));
+		right_slice = (ipSLICE*)malloc(sizeof(ipSLICE));
+		if (prev_start_index < start_index) {
+			slice->start_index = prev_start_index;
+			slice->end_index = start_index;
+			right_slice->start_index = start_index;
+			right_slice->end_index = prev_start_index + count;
+		}
+
+		else {
+			slice->start_index = start_index;
+			slice->end_index = prev_start_index;
+			right_slice->start_index = prev_start_index;
+			right_slice->end_index = start_index + count;
+		}
+		slice_stack[p++] = slice;
+		slice_stack[p++] = right_slice;
+	}
+
+	/* 단계 3 : 스택으로부터 하나의 슬라이스를 가져와서 처리 */
+	while (p != 0)
+	{
+		slice = slice_stack[--p];
+		if (slice->start_index >= slice->end_index) {
+			poly->nVertices = 0;
+			return poly;
+		}
+		if (slice->end_index - slice->start_index != 1) {
+			start_pt.x = contours[k].x[slice->start_index % count];
+			start_pt.y = contours[k].y[slice->start_index % count];
+			end_pt.x = contours[k].x[slice->end_index % count];
+			end_pt.y = contours[k].y[slice->end_index % count];
+			int dx = end_pt.x - start_pt.x;
+			int dy = end_pt.y - start_pt.y;
+			int max_dist = 0;
+			for (i = slice->start_index + 1; i < slice->end_index; i++) {
+				int dist;
+				pt.x = contours[k].x[i % count];
+				pt.y = contours[k].y[i % count];
+				dist = (pt.y - start_pt.y) * dx - (pt.x - start_pt.x) * dy;
+				dist = abs(dist);
+				if (dist > max_dist)
+				{
+					max_dist = dist;
+					split_index = i;
+				}
+			}
+			double real_dist = (double)max_dist / sqrt((double)dx * dx + (double)dy * dy);
+			double slice_dist = slice->end_index - slice->start_index;
+			le_eps = real_dist <= eps * slice_dist;
+		}
+		else {
+			le_eps = 1;
+		}
+		if (le_eps) {
+			vertex_x[seg_count] = contours[k].x[slice->start_index % count];
+			vertex_y[seg_count] = contours[k].y[slice->start_index % count];
+			seg_count++;
+			if (seg_count > MAX_VERTEX - 1) break;
+		}
+		else {
+			right_slice = (ipSLICE*)malloc(sizeof(ipSLICE));
+			right_slice->start_index = split_index;
+			right_slice->end_index = slice->end_index;
+			slice->end_index = right_slice->start_index;
+			slice_stack[p++] = slice;
+			slice_stack[p++] = right_slice;
+			if (p > MAX_STACK - 2) break;
+		}
+	}
+
+	poly->x = (int*)malloc(seg_count * sizeof(int));
+	poly->y = (int*)malloc(seg_count * sizeof(int));
+	for (i = 0; i < seg_count; i++) {
+		poly->x[i] = vertex_x[i];
+		poly->y[i] = vertex_y[i];
+	}
+	poly->nVertices = seg_count;
+	ContourCentroid(&(contours[k]), ContourArea(&(contours[k])));
+	ContourCentroid(poly, ContourArea(poly));
+	return poly;
+
+}
+
+
+ipCONTOUR* CImagePro20194054Week2Doc::CreateContour()
+{
+	ipCONTOUR* contour;
+
+	contour = (ipCONTOUR*)malloc(sizeof(ipCONTOUR));
+	contour->angle = NULL;
+	contour->x = NULL;
+	contour->y = NULL;
+	contour->nVertices = 0;
+
+	return contour;
+
+}
+
+
+double CImagePro20194054Week2Doc::ContourAngle(ipCONTOUR* contour)
+{
+	double total_angle = 0;
+	ipPOINT p0, p1, p2;
+
+	contour->angle = (double*)malloc(contour->nVertices * sizeof(double));
+
+	for (int i = 0; i < contour->nVertices; i++) {
+		p0.x = contour->x[i];
+		p0.y = contour->y[i];
+		p1.x = contour->x[(i + 1) % contour->nVertices];
+		p1.y = contour->y[(i + 1) % contour->nVertices];
+		p2.x = contour->x[(i + contour->nVertices - 1) % contour->nVertices];
+		p2.y = contour->y[(i + contour->nVertices - 1) % contour->nVertices];
+		contour->angle[i] = angle(&p1, &p2, &p0);
+		total_angle += contour->angle[i];
+	}
+
+	return total_angle;
+}
+
+
+double CImagePro20194054Week2Doc::angle(ipPOINT* p1, ipPOINT* p2, ipPOINT* p0)
+{
+	double val, rad;
+
+	double vx1 = p1->x - p0->x;
+	double vy1 = p1->y - p0->y;
+	double vx2 = p2->x - p0->x;
+	double vy2 = p2->y - p0->y;
+
+	val = (vx1 * vx2 + vy1 * vy2) / (sqrt(vx1 * vx1 + vy1 * vy1) * sqrt(vx2 * vx2 + vy2 * vy2) + 1e-10);
+
+	rad = acos(val);
+
+	return (rad / (2 * PI) * 360);
+}
+
+
+void CImagePro20194054Week2Doc::FindTriangles()
+{
+	int N = 11;
+	int thresh;
+	int x, y;
+	ipCONTOUR* poly;
+	unsigned char** tmpImg, ** binaryImg;
+
+	tmpImg = (unsigned char**)malloc(imageHeight * sizeof(unsigned char*));
+	for (int i = 0; i < imageHeight; i++) {
+		tmpImg[i] = (unsigned char*)malloc(imageWidth);
+	}
+	binaryImg = (unsigned char**)malloc(imageHeight * sizeof(unsigned char*));
+	for (int i = 0; i < imageHeight; i++) {
+		binaryImg[i] = (unsigned char*)malloc(imageWidth);
+	}
+
+	// 결과 영상을 초기화
+	for (y = 0; y < imageHeight; y++)
+		for (x = 0; x < imageWidth; x++)
+			if (depth == 1) resultImg[y][x] = 255;
+			else if (depth == 3) {
+				resultImg[y][3 * x] = 255;
+				resultImg[y][3 * x + 1] = 255;
+				resultImg[y][3 * x + 2] = 255;
+			}
+	for (int i = 1; i < N; i++) {
+		// 이진화
+		thresh = i * 255 / N;
+		for (y = 0; y < imageHeight; y++) {
+			for (x = 0; x < imageWidth; x++) {
+				if (depth == 1) {
+					if (inputImg[y][x] >= thresh) binaryImg[y][x] = 255;
+					else binaryImg[y][x] = 0;
+				}
+				else if (depth == 3) {
+					if ((inputImg[y][3 * x] + inputImg[y][3 * x + 1] +
+						inputImg[y][3 * x + 2]) / 3.0 >= thresh) binaryImg[y][x] = 255;
+					else binaryImg[y][x] = 0;
+				}
+			}
+		}
+
+		// 윤곽선 검출
+		FindContours(binaryImg, tmpImg);
+		for (int k = 0; k < nContour; k++) {
+			// 선분으로 근사화
+			poly = ApproxPoly(k, 0.03);
+			if (poly->nVertices == 3 && ContourArea(poly) > 100 && IsConvex(poly) == TRUE) {
+				for (int n = 0; n < contours[k].nVertices; n++) {
+					if (depth == 1)
+						resultImg[contours[k].y[n]][contours[k].x[n]] = 0;
+					else if (depth == 3) {
+						resultImg[contours[k].y[n]][3 * contours[k].x[n]] = 0;
+						resultImg[contours[k].y[n]][3 * contours[k].x[n] + 1] = 0;
+						resultImg[contours[k].y[n]][3 * contours[k].x[n] + 2] = 0;
+					}
+				}
+			}
+			free(poly);
+		}
+	}
+}
+
+#define NUM_OF_MARKERS    10
+#define MARKER_WIDTH       64
+#define MARKER_HEIGHT      64
+void CImagePro20194054Week2Doc::MarkerRecognition()
+{
+	int thresh_value[1024];
+	int N = 11;
+	int thresh;
+	int x, y;
+	ipCONTOUR* poly;
+	unsigned char** tmpImg, ** binaryImg, ** grayImg;
+	double max_angle_diff;
+	ipPOINT pt[4];
+	char fname[256];
+	char buf[256];
+	int i;
+	int width, height, image_depth;
+	unsigned char** marker_img[NUM_OF_MARKERS];
+
+	nSquares = 0;    // 검출된 사각형 수를 0으로 초기화
+
+	tmpImg = CreateImage(imageWidth, imageHeight, 1);
+	binaryImg = CreateImage(imageWidth, imageHeight, 1);
+	grayImg = CreateImage(imageWidth, imageHeight, 1);
+
+	// 입력 영상으로부터 흑백 영상 생성 
+	for (y = 0; y < imageHeight; y++) {
+		for (x = 0; x < imageWidth; x++) {
+			if (depth == 1) {
+				grayImg[y][x] = inputImg[y][x];
+			}
+			else if (depth == 3) {
+				grayImg[y][x] = (unsigned char)((inputImg[y][3 * x] +
+					inputImg[y][3 * x + 1] + inputImg[y][3 * x + 2]) / 3);
+			}
+		}
+	}
+
+	// 입력 영상에서 사각형 검출
+	for (i = 1; i < N; i++)
+	{
+		// 이진화 
+		thresh = i * 255 / N;
+		for (y = 0; y < imageHeight; y++) {
+			for (x = 0; x < imageWidth; x++) {
+				if (grayImg[y][x] >= thresh) binaryImg[y][x] = 255;
+				else binaryImg[y][x] = 0;
+			}
+		}
+
+		// 윤곽선 검출
+		FindContours(binaryImg, tmpImg);
+
+		// 각 제어선에 대해서 
+		for (int k = 0; k < nContour; k++)
+		{
+			// 선분으로 근사화
+			poly = ApproxPoly(k, 0.03);
+
+			if (poly->nVertices == 4) {
+				// 이웃한 두 선분 사이의 각도 계산 
+				ContourAngle(poly);
+
+				// 정점의 각도가 90도에서 얼마나 벗어났는지 탐색 
+				max_angle_diff = 0.0;
+				for (int m = 0; m < poly->nVertices; m++)
+					if (fabs(poly->angle[m] - 90) > max_angle_diff)
+						max_angle_diff = fabs(poly->angle[m] - 90);
+
+				if (ContourArea(poly) > 100 &&
+					ContourArea(poly) < 10000 &&
+					IsConvex(poly) == TRUE &&
+					max_angle_diff < 45 &&
+					ContourDirection(poly) == 2)
+				{
+					// 사각형의 꼭지점 좌표 저장 
+					for (int n = 0; n < 4; n++) {
+						squares[nSquares].pt[n].x = poly->x[n];
+						squares[nSquares].pt[n].y = poly->y[n];
+					}
+					thresh_value[nSquares] = thresh;  // 이진화 임계값 저장 
+					nSquares++;   // 검출된 사각형의 수 증가 
+				}
+			}
+			FreeContour(poly);
+		}
+		for (int k = 0; k < nContour; k++)    FreeContour(&contours[k]);
+	}
+
+	if (nSquares > 0) { // 검출된 사각형이 있으면 
+
+		// 검출된 사각형들 중에서 임계값이 중간인 것을 선택
+		int k = nSquares / 2;
+
+		pt[0].x = squares[k].pt[0].x;
+		pt[0].y = squares[k].pt[0].y;
+		pt[1].x = squares[k].pt[1].x;
+		pt[1].y = squares[k].pt[1].y;
+		pt[2].x = squares[k].pt[2].x;
+		pt[2].y = squares[k].pt[2].y;
+		pt[3].x = squares[k].pt[3].x;
+		pt[3].y = squares[k].pt[3].y;
+
+		// 검출된 사각형을 포함하는 정방형 직사각형 영역 계산 
+		int min_x = 9999, max_x = 0, min_y = 9999, max_y = 0;
+		for (i = 0; i < 4; i++) {
+			if (pt[i].x < min_x) min_x = pt[i].x;
+			if (pt[i].x > max_x) max_x = pt[i].x;
+			if (pt[i].y < min_y) min_y = pt[i].y;
+			if (pt[i].y > max_y) max_y = pt[i].y;
+		}
+
+		width = max_x - min_x + 1;
+		height = max_y - min_y + 1;
+
+		unsigned char** image = CreateImage(width, height, 1);
+		unsigned char** warped_image = CreateImage(width, height, 1);
+		unsigned char** marker_testImg = CreateImage(MARKER_WIDTH,
+			MARKER_HEIGHT, 1);
+
+		// 검출된 사각형을 포함하는 정방형 직사각형 영역 영상 추출  
+		for (y = min_y; y <= max_y; y++) {
+			for (x = min_x; x <= max_x; x++) {
+				image[y - min_y][x - min_x] = grayImg[y][x];
+			}
+		}
+
+		// 검출된 사각형을 포함하는 정방형 직사각형 영역내의 좌표로 변환
+		for (i = 0; i < 4; i++) {
+			pt[i].x -= min_x;
+			pt[i].y -= min_y;
+		}
+
+		// 검출된 사각형을 정방형 직사각형 형태로 워핑
+		Warping(image, warped_image, width, height, pt);
+
+		// 정방형 직사각형 형태의 영상을 마커 영상의 크기로 확대 또는 축소 
+		Resize(warped_image, marker_testImg, width, height, MARKER_WIDTH,
+			MARKER_HEIGHT, 1);
+
+		// 이진화 
+		for (y = 0; y < MARKER_HEIGHT; y++)
+			for (x = 0; x < MARKER_WIDTH; x++)
+				if (marker_testImg[y][x] > thresh_value[k])
+					marker_testImg[y][x] = 255;
+				else
+					marker_testImg[y][x] = 0;
+
+		FreeImage(image, height);
+		FreeImage(warped_image, height);
+
+		// 마커 이미지들을 읽어들임
+		for (i = 0; i < NUM_OF_MARKERS; i++) {
+			sprintf_s(fname, "marker_images/marker_%02d.bmp", i);
+			marker_img[i] = ReadBMPImage(fname, &width, &height, &image_depth);
+
+			if (marker_img[i] == NULL) {
+				sprintf_s(buf, "Can't open file %s", fname);
+				AfxMessageBox(buf);
+				return;
+			}
+
+			if (width != MARKER_WIDTH || height != MARKER_HEIGHT) {
+				AfxMessageBox("Marker image size mismatch!");
+				return;
+			}
+		}
+
+		int min_SAD = 0x7FFFFFFF;
+		int min_index = -1;
+		int sad;
+
+		// 가장 유사한 마커 탐색
+		for (i = 0; i < NUM_OF_MARKERS; i++) {
+			sad = 0;
+			for (y = 0; y < MARKER_HEIGHT; y++) {
+				for (x = 0; x < MARKER_WIDTH; x++) {
+					sad = sad + abs(marker_img[i][y][x] - marker_testImg[y][x]);
+				}
+			}
+			if (sad < min_SAD) {
+				min_SAD = sad;
+				min_index = i;
+			}
+		}
+
+		if (imageWidth >= 2 * MARKER_WIDTH &&
+			imageHeight >= MARKER_HEIGHT) {
+			// 입력 영상으로부터 검출된 사각형 출력 
+			for (y = 0; y < MARKER_HEIGHT; y++) {
+				for (x = 0; x < MARKER_WIDTH; x++) {
+					if (depth == 1) resultImg[y][x] = marker_testImg[y][x];
+					else {
+						resultImg[y][3 * x] = marker_testImg[y][x];
+						resultImg[y][3 * x + 1] = marker_testImg[y][x];
+						resultImg[y][3 * x + 2] = marker_testImg[y][x];
+					}
+				}
+			}
+			// 인식된 마커 영상 출력 
+			for (y = 0; y < MARKER_HEIGHT; y++) {
+				for (x = 0; x < MARKER_WIDTH; x++) {
+					if (depth == 1)
+						resultImg[y][x + MARKER_WIDTH] =
+						marker_img[min_index][y][x];
+					else {
+						resultImg[y][3 * (x + MARKER_WIDTH)] =
+							marker_img[min_index][y][x];
+						resultImg[y][3 * (x + MARKER_WIDTH) + 1] =
+							marker_img[min_index][y][x];
+						resultImg[y][3 * (x + MARKER_WIDTH) + 2] =
+							marker_img[min_index][y][x];
+					}
+				}
+			}
+		}
+		for (i = 0; i < NUM_OF_MARKERS; i++)
+			FreeImage(marker_img[i], MARKER_HEIGHT);
+
+		FreeImage(marker_testImg, MARKER_HEIGHT);
+	}
+	FreeImage(tmpImg, imageHeight);
+	FreeImage(grayImg, imageHeight);
+	FreeImage(binaryImg, imageHeight);
+
+}
+
+
+unsigned char** CImagePro20194054Week2Doc::CreateImage(int width, int height, int depth)
+{
+	unsigned char** img;
+	img = (unsigned char**)malloc(height * sizeof(unsigned char*));
+	for (int i = 0; i < height; i++)
+		img[i] = (unsigned char*)malloc(width * depth);
+	return img;
+}
+
+
+int CImagePro20194054Week2Doc::ContourDirection(ipCONTOUR* contour)
+{
+	int flag = -1;
+
+	int i;
+	int direction;
+	int orientation = 0;
+
+	if (contour->nVertices == 0)
+		return -1;
+
+	flag = 1;
+	direction = -1;
+
+	float dx0 = (float)(contour->x[0] - contour->x[contour->nVertices - 1]);
+	float dy0 = (float)(contour->y[0] - contour->y[contour->nVertices - 1]);
+
+	for (i = 0; i < contour->nVertices; i++) {
+		float dxdy0, dydx0;
+		float dx, dy;
+		dx = (float)(contour->x[(i + 1) % contour->nVertices] - contour->x[i]);
+		dy = (float)(contour->y[(i + 1) % contour->nVertices] - contour->y[i]);
+		dxdy0 = dx * dy0;
+		dydx0 = dy * dx0;
+		orientation |= (dydx0 > dxdy0) ? 1 : ((dydx0 < dxdy0) ? 2 : 3);
+		if (direction == -1) direction = orientation;
+		else if (direction != orientation) printf("Conflict orientation\n");
+
+		if (orientation == 3) {
+			flag = 0;
+			break;
+		}
+
+		dx0 = dx;
+		dy0 = dy;
+	}
+	return direction;
+}
+
+
+void CImagePro20194054Week2Doc::FreeContour(ipCONTOUR* contour)
+{
+	if (contour->angle) free(contour->angle);
+	if (contour->x) free(contour->x);
+	if (contour->y) free(contour->y);
+}
+
+
+void CImagePro20194054Week2Doc::Warping(unsigned char** srcImg, unsigned char** dstImg, int width, int height, ipPOINT pt[])
+{
+	int num_lines = 4;			// 제어선의 수
+	control_line source_lines[4];
+	control_line dest_lines[4];
+
+	double u;       // 수직 교차점의 위치
+	double h;       // 제어선으로부터 픽셀의 수직 변위
+	double d;       // 제어선과 픽셀 사이의 거리
+	double tx, ty;  // 결과영상 픽셀에 대응되는 입력 영상 픽셀 사이의 변위의 합
+	double xp, yp; // 각 제어선에 대해 계산된 입력 영상의 대응되는 픽셀 위치
+	double weight;  // 각 제어선의 가중치
+	double totalWeight;  // 가중치의 합
+	double a = 0.001;
+	double b = 2.0;
+	double p = 0.75;
+	int x1, x2, x3, y1, y2, y3;
+	int src_x1, src_y1, src_x2, src_y2;
+	double src_line_length, dest_line_length;
+	int line;
+	int x, y;
+	int source_x, source_y;
+	int last_row, last_col;
+
+	int i, left_top;
+	int min_distance = 0x7FFFFFFF;
+	int clockwise;
+
+	int y_top_1, y_top_2;
+	int y_min_1, y_min_2;
+
+	y_min_1 = 0x7FFFFFFF;
+
+	for (i = 0; i < 4; i++) {
+		if (pt[i].y < y_min_1) {
+			y_min_1 = pt[i].y;
+			y_top_1 = i;
+		}
+	}
+
+	y_min_2 = 0x7FFFFFFF;
+
+	for (i = 0; i < 4; i++) {
+		if (i != y_top_1 && pt[i].y < y_min_2) {
+			y_min_2 = pt[i].y;
+			y_top_2 = i;
+		}
+	}
+
+	if (pt[y_top_1].x < pt[y_top_2].x) {
+		left_top = y_top_1;
+		if (y_top_2 == (y_top_1 + 1) % 4)
+			clockwise = TRUE;
+		else
+			clockwise = FALSE;
+	}
+	else {
+		left_top = y_top_2;
+		if (y_top_1 == (y_top_2 + 1) % 4)
+			clockwise = TRUE;
+		else
+			clockwise = FALSE;
+	}
+
+	if (clockwise == TRUE) {
+		source_lines[0].Px = pt[left_top].x;
+		source_lines[0].Py = pt[left_top].y;
+		source_lines[0].Qx = pt[(left_top + 1) % 4].x;
+		source_lines[0].Qy = pt[(left_top + 1) % 4].y;
+
+		source_lines[1].Px = pt[(left_top + 1) % 4].x;
+		source_lines[1].Py = pt[(left_top + 1) % 4].y;
+		source_lines[1].Qx = pt[(left_top + 2) % 4].x;
+		source_lines[1].Qy = pt[(left_top + 2) % 4].y;
+
+		source_lines[2].Px = pt[(left_top + 2) % 4].x;
+		source_lines[2].Py = pt[(left_top + 2) % 4].y;
+		source_lines[2].Qx = pt[(left_top + 3) % 4].x;
+		source_lines[2].Qy = pt[(left_top + 3) % 4].y;
+
+		source_lines[3].Px = pt[(left_top + 3) % 4].x;
+		source_lines[3].Py = pt[(left_top + 3) % 4].y;
+		source_lines[3].Qx = pt[left_top].x;
+		source_lines[3].Qy = pt[left_top].y;
+	}
+	else
+	{
+		source_lines[0].Px = pt[left_top].x;
+		source_lines[0].Py = pt[left_top].y;
+		source_lines[0].Qx = pt[(left_top + 3) % 4].x;
+		source_lines[0].Qy = pt[(left_top + 3) % 4].y;
+
+		source_lines[1].Px = pt[(left_top + 3) % 4].x;
+		source_lines[1].Py = pt[(left_top + 3) % 4].y;
+		source_lines[1].Qx = pt[(left_top + 2) % 4].x;
+		source_lines[1].Qy = pt[(left_top + 2) % 4].y;
+
+		source_lines[2].Px = pt[(left_top + 2) % 4].x;
+		source_lines[2].Py = pt[(left_top + 2) % 4].y;
+		source_lines[2].Qx = pt[(left_top + 1) % 4].x;
+		source_lines[2].Qy = pt[(left_top + 1) % 4].y;
+
+		source_lines[3].Px = pt[(left_top + 1) % 4].x;
+		source_lines[3].Py = pt[(left_top + 1) % 4].y;
+		source_lines[3].Qx = pt[left_top].x;
+		source_lines[3].Qy = pt[left_top].y;
+	}
+
+	dest_lines[0].Px = 0;
+	dest_lines[0].Py = 0;
+	dest_lines[0].Qx = width - 1;
+	dest_lines[0].Qy = 0;
+	dest_lines[1].Px = width - 1;
+	dest_lines[1].Py = 0;
+	dest_lines[1].Qx = width - 1;
+	dest_lines[1].Qy = height - 1;
+	dest_lines[2].Px = width - 1;
+	dest_lines[2].Py = height - 1;
+	dest_lines[2].Qx = 0;
+	dest_lines[2].Qy = height - 1;
+	dest_lines[3].Px = 0;
+	dest_lines[3].Py = height - 1;
+	dest_lines[3].Qx = 0;
+	dest_lines[3].Qy = 0;
+
+	last_row = height - 1;
+	last_col = width - 1;
+
+	// 출력 영상의 각 픽셀에 대하여 
+	for (y = 0; y < height; y++)
+	{
+		for (x = 0; x < width; x++)
+		{
+			totalWeight = 0.0;
+			tx = 0.0;
+			ty = 0.0;
+
+			// 각 제어선에 대하여 
+			for (line = 0; line < num_lines; line++)
+			{
+				x1 = dest_lines[line].Px;
+				y1 = dest_lines[line].Py;
+				x2 = dest_lines[line].Qx;
+				y2 = dest_lines[line].Qy;
+				x3 = x;
+				y3 = y;
+
+				dest_line_length = sqrt((double)((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)));
+
+				// 수직교차점의 위치 및 픽셀의 수직 변위 계산 
+				u = (double)((x3 - x1) * (x2 - x1) + (y3 - y1) * (y2 - y1)) /
+					(double)((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+				h = (double)((y3 - y1) * (x2 - x1) - (x3 - x1) * (y2 - y1)) / dest_line_length;
+
+				// 제어선과 픽셀 사이의 거리 계산 
+				if (u < 0) d = sqrt((double)((x3 - x1) * (x3 - x1) + (y3 - y1) * (y3 - y1)));
+				else if (u > 1) d = sqrt((double)((x3 - x2) * (x3 - x2) + (y3 - y2) * (y3 - y2)));
+				else d = fabs(h);
+
+				src_x1 = source_lines[line].Px;
+				src_y1 = source_lines[line].Py;
+				src_x2 = source_lines[line].Qx;
+				src_y2 = source_lines[line].Qy;
+				src_line_length = sqrt((double)((src_x2 - src_x1) * (src_x2 - src_x1) +
+					(src_y2 - src_y1) * (src_y2 - src_y1)));
+
+				// 입력 영상에서의 대응 픽셀 위치 계산 
+				xp = src_x1 + u * (src_x2 - src_x1) -
+					h * (src_y2 - src_y1) / src_line_length;
+				yp = src_y1 + u * (src_y2 - src_y1) +
+					h * (src_x2 - src_x1) / src_line_length;
+
+				// 제어선에 대한 가중치 계산 
+				weight = pow((pow((double)(dest_line_length), p) / (a + d)), b);
+
+				// 대응 픽셀과의 변위 계산 
+				tx += (xp - x) * weight;
+				ty += (yp - y) * weight;
+				totalWeight += weight;
+			}
+
+			source_x = x + (int)(tx / totalWeight);
+			source_y = y + (int)(ty / totalWeight);
+
+			// 영상의 경계를 벗어나는지 검사 
+			if (source_x < 0) source_x = 0;
+			if (source_x > last_col) source_x = last_col;
+			if (source_y < 0) source_y = 0;
+			if (source_y > last_row) source_y = last_row;
+
+			dstImg[y][x] = srcImg[source_y][source_x];
+		}
+	}
+}
+
+
+void CImagePro20194054Week2Doc::Resize(unsigned char** srcImg, unsigned char** dstImg, int srcW, int srcH, int dstW, int dstH, int depth)
+{
+	int y, x;
+	double src_x, src_y;
+	double alpha, beta;
+	double scale_x, scale_y;
+	double E, F;
+	int Ax, Ay, Bx, By, Cx, Cy, Dx, Dy;
+
+	scale_x = (double)dstW / (double)srcW;
+	scale_y = (double)dstH / (double)srcH;
+
+	for (y = 0; y < dstH; y++)
+		for (x = 0; x < dstW; x++) {
+			src_x = x / (double)scale_x;
+			src_y = y / (double)scale_y;
+			alpha = src_x - x / scale_x;
+			beta = src_y - y / scale_y;
+
+			Ax = (int)(x / scale_x);
+			Ay = (int)(y / scale_y);
+			Bx = Ax + 1;
+			By = Ay;
+			Cx = Ax;
+			Cy = Ay + 1;
+			Dx = Ax + 1;
+			Dy = Ay + 1;
+
+			if (Bx > srcW - 1) Bx = srcW - 1;
+			if (Dx > srcW - 1) Bx = srcW - 1;
+			if (Cy > srcH - 1) Cy = srcH - 1;
+			if (Dy > srcH - 1) Dy = srcH - 1;
+
+			if (depth == 1) {
+				E = srcImg[Ay][Ax] * (1 - alpha) + srcImg[By][Bx] * alpha;
+				F = srcImg[Cy][Cx] * (1 - alpha) + srcImg[Dy][Dx] * alpha;
+				dstImg[y][x] = (int)(E * (1 - beta) + F * beta);
+			}
+			else {
+				E = srcImg[Ay][3 * Ax] * (1 - alpha) + srcImg[By][3 * Bx] * alpha;
+				F = srcImg[Cy][3 * Cx] * (1 - alpha) + srcImg[Dy][3 * Dx] * alpha;
+				dstImg[y][3 * x] = (int)(E * (1 - beta) + F * beta);
+
+				E = srcImg[Ay][3 * Ax + 1] * (1 - alpha) + srcImg[By][3 * Bx + 1] * alpha;
+				F = srcImg[Cy][3 * Cx + 1] * (1 - alpha) + srcImg[Dy][3 * Dx + 1] * alpha;
+				dstImg[y][3 * x + 1] = (int)(E * (1 - beta) + F * beta);
+
+				E = srcImg[Ay][3 * Ax + 2] * (1 - alpha) + srcImg[By][3 * Bx + 2] * alpha;
+				F = srcImg[Cy][3 * Cx + 2] * (1 - alpha) + srcImg[Dy][3 * Dx + 2] * alpha;
+				dstImg[y][3 * x + 2] = (int)(E * (1 - beta) + F * beta);
+			}
+		}
+}
+
+
+
+void CImagePro20194054Week2Doc::FreeImage(unsigned char** image, int height)
+{
+	for (int y = 0; y < height; y++) free(image[y]);
+	free(image);
+}
+
+
+unsigned char** CImagePro20194054Week2Doc::ReadBMPImage(char* fname, int* width, int* height, int* depth)
+{
+	int i;
+	FILE* f;
+
+	BITMAPFILEHEADER hf;
+	BITMAPINFOHEADER hInfo;
+	char buf[256];
+	unsigned char** image;
+	int image_width, image_height, image_depth;
+	int debug_mode = TRUE;
+
+	f = fopen(fname, "rb");
+	if (!f)
+	{
+		printf("Can't open %s\n", fname);
+		return NULL;
+	}
+
+	fread(&hf, sizeof(BITMAPFILEHEADER), 1, f); // 파일헤더를 읽음 
+	if (hf.bfType != 0x4D42) {
+		printf("BMP 파일 형식이 아닙니다");
+		return NULL;
+	}
+
+	fread(&hInfo, sizeof(BITMAPINFOHEADER), 1, f); // 영상헤더를 읽음 
+
+	image_width = hInfo.biWidth;
+	image_height = hInfo.biHeight;
+	if (hInfo.biBitCount == 8) image_depth = 1;
+	else if (hInfo.biBitCount == 24) image_depth = 3;
+	else {
+		printf("처리할 수 없는 BMP 파일 형식입니다");
+		return NULL;
+	}
+
+	image = CreateImage(image_width, image_height, image_depth);
+
+	fseek(f, hf.bfOffBits, SEEK_SET);
+
+	for (i = 0; i < image_height; i++) {
+		fread(image[image_height - 1 - i], image_width * image_depth, 1, f);
+		fread(buf, (image_width * image_depth + 3) / 4 * 4 -
+			image_width * image_depth, 1, f);
+	}
+
+	*width = image_width;
+	*height = image_height;
+	*depth = image_depth;
+
+	fclose(f);
+
+	return image;
 }

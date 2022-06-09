@@ -10,6 +10,26 @@ typedef struct {
 	double im;
 }complex_num;
 
+#define MAX_CONTOURS 1024
+
+typedef struct contourStruct
+{
+	int* x; // 윤곽선의 각 정점들의 x좌표
+	int* y; // 윤곽선의 각 정점들의 y좌표
+	int nVertices; // 윤곽선의 정점의 수
+	double* angle; // 윤곽선의 각 정점들의 내각
+	double cx, cy; // 윤곽선 내부 영역의 무게 중심 위치
+}ipCONTOUR;
+
+typedef struct tag_ipPOINT {
+	int x;
+	int y;
+}ipPOINT;
+
+typedef struct tag_ipSquares {
+	ipPOINT pt[4];
+} ipSQUARE;
+
 class CImagePro20194054Week2Doc : public CDocument
 {
 protected: // serialization에서만 만들어집니다.
@@ -34,6 +54,12 @@ public:
 	
 	complex_num **fft_result;	//FFT 결과를 저장하기 위한 기억 장소 포인터
 	complex_num** ifft_result;	//IFFT 결과를 저장하기 위한 기억 장소 포인터
+
+	ipCONTOUR contours[MAX_CONTOURS];
+	int nContour;
+
+	ipSQUARE squares[1024];
+	int nSquares;
 
 // 작업입니다.
 public:
@@ -106,5 +132,26 @@ public:
 	void NoiseRemove();
 	void ZoomInDialog(float zoom_in_ratio);
 	void PixelAddValue(int added_value);
+	void GeometryWarpingMouse(int Ax, int Ay, int Bx, int By);
+	void FindContours(unsigned char** binaryImg, unsigned char** contourImg);
+	double ContourLength(ipCONTOUR* contour);
+	double ContourArea(ipCONTOUR* contour);
+	void ContourCentroid(ipCONTOUR* contour, double contour_area);
+	int IsConvex(ipCONTOUR* contour);
+	void GeometricalFeatures();
+	void GeometricalFeaturesLineApprox();
+	ipCONTOUR* ApproxPoly(int k, double eps);
+	ipCONTOUR* CreateContour();
+	double ContourAngle(ipCONTOUR* contour);
+	double angle(ipPOINT* p1, ipPOINT* p2, ipPOINT* p0);
+	void FindTriangles();
+	void MarkerRecognition();
+	unsigned char** CreateImage(int width, int height, int depth);
+	int ContourDirection(ipCONTOUR* contour);
+	void FreeContour(ipCONTOUR* contour);
+	void Warping(unsigned char** srcImg, unsigned char** dstImg, int width, int height, ipPOINT pt[]);
+	void Resize(unsigned char** srcImg, unsigned char** dstImg, int srcW, int srcH, int dstW, int dstH, int depth);
+	void FreeImage(unsigned char** image, int height);
+	unsigned char** ReadBMPImage(char* fname, int* width, int* height, int* depth);
 };
  

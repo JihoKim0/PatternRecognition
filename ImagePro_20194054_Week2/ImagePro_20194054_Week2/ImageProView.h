@@ -17,6 +17,8 @@ public:
 	int viewMode;
 	char AVIFileName[256];
 	int operation;
+	int mouse_input_started;
+	int Ax, Ay, Bx, By;
 
 // 작업입니다.
 public:
@@ -82,6 +84,15 @@ public:
 	afx_msg void OnNoiseRemove();
 	afx_msg void OnZoomInDialog();
 	afx_msg void OnPixelAddSlider();
+	afx_msg void OnGeometryWarpingMouse();
+	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
+	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
+	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
+	afx_msg void OnFindContours();
+	afx_msg void OnGeometricalFeatures();
+	afx_msg void OnGeometricalFeaturesLineApprox();
+	afx_msg void OnFindTriangles();
+	afx_msg void OnMarkerRecognition();
 };
 
 #ifndef _DEBUG  // ImageProView.cpp의 디버그 버전
